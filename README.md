@@ -5,6 +5,10 @@
 
 This repository is the canonical public home for the estate's 41-vertex circulant `(5,5)` Ramsey program. The witness establishes `R(5,5) >= 42`, which is weaker than the published lower bound, but the estate's contribution here is the **exact internal structure** of this highly symmetric witness and its surrounding finite classification work.
 
+## New: small Ramsey numbers in one Lean file
+
+[`lean-proof/`](lean-proof/) proves R(3,3)=6, R(3,4)=9, R(3,5)=14 and R(4,4)=18 exactly, plus 25 ≤ R(4,5) ≤ 31 and 42 ≤ R(5,5) ≤ 62. It's a single file with no imports, checked by the Lean kernel.
+
 ## Structural package
 
 The recovered program includes:
