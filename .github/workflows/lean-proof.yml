@@ -30,14 +30,21 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('lean-proof/R55Final.lean')
           text = p.read_text(encoding='utf-8')
-          assert not any(line.lstrip().startswith('axiom ') for line in text.splitlines())
-          assert not any(line.lstrip().startswith('unsafe ') for line in text.splitlines())
-          sorry_lines = [(i+1, line.strip()) for i,line in enumerate(text.splitlines()) if 'sorry' in line and not line.lstrip().startswith('/--') and not line.lstrip().startswith('--')]
-          print('non-comment sorry mentions:', sorry_lines)
+          # Strip block and line comments before lexical escape-surface checks.
+          code = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+          code = re.sub(r'--.*$', '', code, flags=re.M)
+          lines = code.splitlines()
+          assert not any(line.lstrip().startswith('axiom ') for line in lines)
+          assert not any(line.lstrip().startswith('unsafe ') for line in lines)
+          sorry_lines = [(i+1, line.strip()) for i,line in enumerate(lines) if re.search(r'\bsorry\b', line)]
+          print('code sorry mentions:', sorry_lines)
           assert len(sorry_lines) == 1
-          assert 'frontier_obligation62' in '\n'.join(text.splitlines()[max(0,sorry_lines[0][0]-4):sorry_lines[0][0]+1])
+          # Verify the one admitted theorem is the explicitly quarantined frontier obligation.
+          prefix = '\n'.join(lines[:sorry_lines[0][0]])
+          assert prefix.rfind('theorem frontier_obligation62') > prefix.rfind('theorem R55_CAMPAIGN')
           PY
 
       - name: Print axioms of campaign theorem
@@ -46,8 +53,8 @@ jobs:
           printf '\n#print axioms R55_CAMPAIGN\n' >> /tmp/R55Audit.lean
           lean /tmp/R55Audit.lean 2>&1 | tee /tmp/r55-axioms.txt
           echo '--- campaign axiom tail ---'
-          tail -n 20 /tmp/r55-axioms.txt
-          if grep -q 'R55_CAMPAIGN.*sorryAx' /tmp/r55-axioms.txt; then
-            echo 'R55_CAMPAIGN unexpectedly depends on sorryAx' >&2
+          tail -n 30 /tmp/r55-axioms.txt
+          if grep -q 'sorryAx' /tmp/r55-axioms.txt; then
+            echo 'R55_CAMPAIGN axiom print unexpectedly contains sorryAx' >&2
             exit 1
           fi
