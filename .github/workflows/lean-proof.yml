@@ -1,0 +1,53 @@
+name: Lean Ramsey Proof Replay
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  lean-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Elan and pinned Lean
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          "$HOME/.elan/bin/elan" toolchain install leanprover/lean4:v4.31.0-rc1
+          "$HOME/.elan/bin/elan" default leanprover/lean4:v4.31.0-rc1
+
+      - name: Verify toolchain
+        run: lean --version
+
+      - name: Compile self-contained proof file
+        run: lean lean-proof/R55Final.lean
+
+      - name: Audit source escape surface
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lean-proof/R55Final.lean')
+          text = p.read_text(encoding='utf-8')
+          assert not any(line.lstrip().startswith('axiom ') for line in text.splitlines())
+          assert not any(line.lstrip().startswith('unsafe ') for line in text.splitlines())
+          sorry_lines = [(i+1, line.strip()) for i,line in enumerate(text.splitlines()) if 'sorry' in line and not line.lstrip().startswith('/--') and not line.lstrip().startswith('--')]
+          print('non-comment sorry mentions:', sorry_lines)
+          assert len(sorry_lines) == 1
+          assert 'frontier_obligation62' in '\n'.join(text.splitlines()[max(0,sorry_lines[0][0]-4):sorry_lines[0][0]+1])
+          PY
+
+      - name: Print axioms of campaign theorem
+        run: |
+          cp lean-proof/R55Final.lean /tmp/R55Audit.lean
+          printf '\n#print axioms R55_CAMPAIGN\n' >> /tmp/R55Audit.lean
+          lean /tmp/R55Audit.lean 2>&1 | tee /tmp/r55-axioms.txt
+          echo '--- campaign axiom tail ---'
+          tail -n 20 /tmp/r55-axioms.txt
+          if grep -q 'R55_CAMPAIGN.*sorryAx' /tmp/r55-axioms.txt; then
+            echo 'R55_CAMPAIGN unexpectedly depends on sorryAx' >&2
+            exit 1
+          fi
